@@ -15,6 +15,7 @@ Gofran 17/04/28 1.0 build this moudle
 
 #define NV21OR21 1
 #define YUV420SP 2
+#define SAVE_RET
 
 /**************************************************************************
  *Function    : yuvAddWaterMark
@@ -28,36 +29,37 @@ Gofran 17/04/28 1.0 build this moudle
  *Return      : NULL
  *Others      ：NULL
  **************************************************************************/
-void yuvAddWaterMark(int yuvType, int startX, int startY, unsigned char *waterMarkData,
-                int waterMarkW, int waterMarkH, unsigned char *yuvData, int yuvW, int yuvH) {
-  int i=0;
-  int j=0;
-  int k=0;
-  switch(yuvType) {
-    case NV21OR21:
-         for(i=startY; i<waterMarkH+startY; i++) {
-           memcpy(yuvData+startX+i*yuvW, waterMarkData+j*waterMarkW, waterMarkW);
-           j++;
-         }
-         for(i=startY/2; i<(waterMarkH+startY)/2; i++) {
-           memcpy(yuvData+startX+yuvW*yuvH+i*yuvW, waterMarkData+waterMarkW*waterMarkH+k*waterMarkW, waterMarkW);
-         }
+ void yuvAddWaterMark(int yuvType, int startX, int startY, unsigned char *waterMarkData,
+                 int waterMarkW, int waterMarkH, unsigned char *yuvData, int yuvW, int yuvH) {
+   int i=0;
+   int j=0;
+   int k=0;
+   switch(yuvType) {
+     case NV21OR21:
+          for(i=startY; i<waterMarkH+startY; i++) {
+            memcpy(yuvData+startX+i*yuvW, waterMarkData+j*waterMarkW, waterMarkW);
+            j++;
+          }
+          for(i=startY/2; i<(waterMarkH+startY)/2; i++) {
+            memcpy(yuvData+startX+yuvW*yuvH+i*yuvW, waterMarkData+waterMarkW*waterMarkH+k*waterMarkW, waterMarkW);
+            k++;
+          }
 
-         #ifdef SAVE_RET
-         FILE *outPutFp = fopen(outPutFile, "w+");
-         fwrite(yuvData, 1, yuvW*yuvH*3/2, outPutFp);
-         fclose(outPutFp);
-         #endif
+          #ifdef SAVE_RET
+          FILE *outPutFp = fopen("Final.yuv", "w+");
+          fwrite(yuvData, 1, yuvW*yuvH*3/2, outPutFp);
+          fclose(outPutFp);
+          #endif
 
-         break;
-    case YUV420SP:
+          break;
+     case YUV420SP:
+      //Not FInished
+             break;
+     default:
      //Not FInished
-            break;
-    default:
-    //Not FInished
-            break;
-  }
-}
+             break;
+   }
+ }
 
 /**************************************************************************
  *Function    : cutYuv
@@ -76,18 +78,23 @@ void cutYuv(int yuvType, unsigned char *tarYuv, unsigned char *srcYuv, int start
   int i;
   int j = 0;
   int k = 0;
+  //分配一段内存，用于存储裁剪后的Y分量
   unsigned char *tmpY = (unsigned char *)malloc(cutW*cutH);
+  //分配一段内存，用于存储裁剪后的UV分量
 	unsigned char *tmpUV = (unsigned char *)malloc(cutW*cutH/2);
   switch (yuvType) {
     case NV21OR21:
          for(i=startH; i<cutH+startH; i++) {
+           // 逐行拷贝Y分量，共拷贝cutW*cutH
            memcpy(tmpY+j*cutW, srcYuv+startW+i*srcW, cutW);
            j++;
          }
          for(i=startH/2; i<(cutH+startH)/2; i++) {
+           //逐行拷贝UV分量，共拷贝cutW*cutH/2
            memcpy(tmpUV+k*cutW, srcYuv+startW+srcW*srcH+i*srcW, cutW);
            k++;
          }
+         //将拷贝好的Y，UV分量拷贝到目标内存中
          memcpy(tarYuv, tmpY, cutW*cutH);
          memcpy(tarYuv+cutW*cutH, tmpUV, cutW*cutH/2);
          free(tmpY);
@@ -99,78 +106,61 @@ void cutYuv(int yuvType, unsigned char *tarYuv, unsigned char *srcYuv, int start
    }
 }
 
-#if 0
+int fCutWaterMark(unsigned char *waterMarkSrc, unsigned char *srcYuv, int waterMarkW, int waterMarkH) {
+	int i;
+	unsigned char tmpData[waterMarkW*waterMarkH*3/2];
+	unsigned char tmpWaterMark[waterMarkW*waterMarkH*3/2];
+	memcpy(tmpData, srcYuv, waterMarkW*waterMarkH*3/2);
+	memcpy(tmpWaterMark, waterMarkSrc, waterMarkW*waterMarkH*3/2);
+
+	for(i=0; i<waterMarkW*waterMarkH*3/2; i++) {
+		if(tmpWaterMark[i]!=0x10 && tmpWaterMark[i]!=0x80 && tmpWaterMark[i]!=0xeb) {
+			tmpData[i] = tmpWaterMark[i];
+			// printf("0x%X\n", tmpData[i]);
+		}
+	}
+
+	memcpy(waterMarkSrc, tmpData, waterMarkW*waterMarkH*3/2);
+	#if 0
+	FILE *tarFp = fopen("afterCutWaterMark.yuv", "w+");
+	fwrite(waterMarkSrc, 1, waterMarkW*waterMarkH*3/2, tarFp);
+	fclose(tarFp);
+	#endif
+	return 0;
+}
+
+//Final Main Function
+#if 1
 int main(int argc, char *argv[]) {
-  FILE *inPutFp = fopen(argv[4], "r+");
-  FILE *waterMarkFp = fopen(argv[1], "r+");
-  if(inPutFp==NULL || waterMarkFp==NULL) {
-    printf("Open Input File Error!\n");
-    return -1;
-  }
+  FILE *inputFp = fopen(argv[1], "r+");
+  FILE *waterMarkFp = fopen(argv[4], "r+");
 
-  int waterMarkW = atoi(argv[2]);
-  int waterMarkH = atoi(argv[3]);
-  int yuvDataW = atoi(argv[5]);
-  int yuvDataH = atoi(argv[6]);
-  int startX = atoi(argv[7]);
-  int startY = atoi(argv[8]);
+  int srcW = atoi(argv[2]);
+  int srcH = atoi(argv[3]);
+  int waterMarkW = atoi(argv[5]);
+  int waterMarkH = atoi(argv[6]);
 
+  unsigned char *yuvSrcData = (unsigned char *)malloc(srcW*srcH*3/2);
   unsigned char *waterMarkData = (unsigned char *)malloc(waterMarkW*waterMarkH*3/2);
-  unsigned char *yuvData = (unsigned char *)malloc(yuvDataW*yuvDataH*3/2);
-  if(waterMarkData==NULL || yuvData==NULL) {
-    printf("Malloc memory Failed!\n");
-    return -1;
-  }
+  unsigned char *afterCutData = (unsigned char *)malloc(waterMarkW*waterMarkH*3/2);
 
+  fread(yuvSrcData, 1, srcW*srcH*3/2, inputFp);
   fread(waterMarkData, 1, waterMarkW*waterMarkH*3/2, waterMarkFp);
-  fread(yuvData, 1, yuvDataW*yuvDataH*3/2, inPutFp);
 
-  yuvAddWaterMark(NV21OR21, startX, startY, waterMarkData, waterMarkW, waterMarkH, yuvData, yuvDataW, yuvDataH, argv[9]);
+  cutYuv(NV21OR21, afterCutData, yuvSrcData, 50, 50, waterMarkW, waterMarkH, srcW, srcH);
+  fCutWaterMark( waterMarkData, afterCutData, waterMarkW, waterMarkH);
 
-  free(waterMarkData);
-  free(yuvData);
-  fclose(waterMarkFp);
-  fclose(inPutFp);
+  #if 1
+  FILE *tarFp = fopen("afterCutWaterMarktmp.yuv", "w+");
+  fwrite(waterMarkData, 1, waterMarkW*waterMarkH*3/2, tarFp);
+  // fwrite(afterCutData, 1, waterMarkW*waterMarkH*3/2, tarFp);
+  fclose(tarFp);
+  #endif
+  yuvAddWaterMark(NV21OR21, 50, 50, waterMarkData, waterMarkW, waterMarkH, yuvSrcData, srcW, srcH);
+
   return 0;
 }
 #endif
-
-int main(int argc, char *argv[]) {
-  FILE *inPutFp = fopen(argv[1], "r+");
-  if(inPutFp==NULL) {
-    printf("Open Input File Error!\n");
-    return -1;
-  }
-
-  int yuvDataW = atoi(argv[2]);
-  int yuvDataH = atoi(argv[3]);
-  int startX = atoi(argv[4]);
-  int startY = atoi(argv[5]);
-  int cutX = atoi(argv[6]);
-  int cutY = atoi(argv[7]);
-
-  unsigned char *yuvData = (unsigned char *)malloc(yuvDataW*yuvDataH*3/2);
-  if( yuvData==NULL) {
-    printf("Malloc memory Failed!\n");
-    return -1;
-  }
-
-  unsigned char *tarYuv = (unsigned char *)malloc(cutX*cutY*3/2);
-  fread(yuvData, 1, yuvDataW*yuvDataH*3/2, inPutFp);
-  cutYuv( NV21OR21, tarYuv, yuvData, startX, startY, cutX, cutY, yuvDataW, yuvDataH);
-
-  FILE *outPutFp = fopen("afterCut.yuv", "w+");
-  if(!outPutFp) {
-    printf("Open Out Put File Error!\n");
-    return -1;
-  }
-  fwrite(tarYuv, 1, cutX*cutY*3/2, outPutFp);
-  fclose(inPutFp);
-  fclose(outPutFp);
-  free(yuvData);
-  free(tarYuv);
-  return 0;
-}
 
 /*********************************************************************
  *                             _ooOoo_
